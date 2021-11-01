@@ -66,6 +66,12 @@ static char *subst_rhs;
 static int subst_lhs_len;
 static int subst_rhs_len;
 
+static int discard_last_word_ampesand = 1; /* Replaces !$ substitution with previous word if last word is & */
+/* eg. !$ from echo 1 2 3 & will be 3 instead of & */
+
+static int skip_trailing_ampesand = 1; /* Removes trailing & from substituted word */
+/* eg. !$ from echo 1 2 3& will be 3 instead of 3& */
+
 /* Characters that delimit history event specifications and separate event
    specifications from word designators.  Static for now */
 static char *history_event_delimiter_chars = HISTORY_EVENT_DELIMITERS;
@@ -530,6 +536,7 @@ static int
 history_expand_internal (char *string, int start, int qc, int *end_index_ptr, char **ret_string, char *current_line)
 {
   int i, n, starting_index;
+  int last_cmd_last_word = 0;
   int substitute_globally, subst_bywords, want_quotes, print_only;
   char *event, *temp, *result, *tstr, *t, c, *word_spec;
   int result_len;
@@ -545,6 +552,11 @@ history_expand_internal (char *string, int start, int qc, int *end_index_ptr, ch
 
   /* If it is followed by something that starts a word specifier,
      then !! is implied as the event specifier. */
+
+  if(string[i + 1] == '$')
+  {
+	last_cmd_last_word = 1;
+  }
 
   if (member (string[i + 1], ":$*%^"))
     {
@@ -839,6 +851,63 @@ history_expand_internal (char *string, int start, int qc, int *end_index_ptr, ch
   /* Believe it or not, we have to back the pointer up by one. */
   --i;
 
+  /* Replace & with previous word when !$ is expanded. We have to enter the
+     logic  only when the already expanded string, ie. temp is '&' */
+  if(discard_last_word_ampesand && last_cmd_last_word && (strlen(temp) == 1) && (temp[0] == '&'))
+  {
+	int event_len = strlen(event);
+	char *hist_backup = (char *)xmalloc(event_len + 1);
+	strncpy(hist_backup, event, event_len);
+	hist_backup[event_len] = '\0';
+
+
+	int hist_split_count = 0;
+	int arr_len = 64;
+
+
+	char **str_substrings = (char **)xmalloc(arr_len * sizeof(char *));
+	char *token = strtok(hist_backup, " ");
+	while(token != NULL)
+	{
+		str_substrings[hist_split_count++] = token;
+		token = strtok(NULL, " ");
+		if(hist_split_count >= arr_len)
+		{
+			arr_len += 64;
+			str_substrings = (char **)xrealloc(str_substrings, arr_len * sizeof(char *));
+		}
+	}
+
+	int match_found = 0;
+
+	if(hist_split_count)
+	{
+		char *last_word = str_substrings[hist_split_count - 1];
+		while(hist_split_count)
+		{
+			if((strlen(last_word) == 1) && (last_word[0] == '&'))
+			{
+				hist_split_count--;
+				last_word = str_substrings[hist_split_count - 1];
+			}
+			else
+			{
+				match_found = 1;
+				break;
+			}
+		}
+		if(match_found)
+		{
+			xfree(temp);
+			temp = savestring(last_word);
+		}
+	}
+
+	xfree(str_substrings);
+	xfree(hist_backup);
+  }
+
+
   if (want_quotes)
     {
       char *x;
@@ -853,6 +922,24 @@ history_expand_internal (char *string, int start, int qc, int *end_index_ptr, ch
       xfree (temp);
       temp = x;
     }
+
+  /* Now remove the trailing ampersands from the last word */
+  if(skip_trailing_ampesand)
+  {
+	int temp_len = strlen(temp);
+	while(temp_len)
+	{
+		if((temp[temp_len - 1] == '&') || (temp[temp_len - 1] == ' '))
+		{
+			temp[temp_len - 1] = '\0';
+			temp_len--;
+		}
+		else
+		{
+			break;
+		}
+	}
+  }
 
   n = strlen (temp);
   if (n >= result_len)
