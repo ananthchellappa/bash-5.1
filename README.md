@@ -6,6 +6,14 @@ So we want to **enhance** `set +o history` to suspend logging to ~/.bash_history
 i.e., till you do `set -o history`) you do get command recall with !number and arrow keys. 
 These private mode commands will, of course, be forgotten once user exits private mode.
 
+The latest additions : 
+
+Ignore & at end of previous command when using !$ (that is, use the word preceding the &)
+TAB completion now expands !!, !$, !old, !N:M, !-N:M, etc, even if embedded in text, like /!$/
+Aimed at boosting productivity.
+
+** for demos, please view the animated GIFs in the demos folder **
+
 Introduction
 ============
 
