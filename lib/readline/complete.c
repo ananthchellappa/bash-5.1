@@ -1985,6 +1985,27 @@ compare_match (char *text, const char *match)
   return (strcmp (text, match));
 }
 
+/*
+Returns 0 if matching fails. Else returns number of entries filled in
+matches */
+int match_history_expansion(char *text, char ***matches)
+{
+  if(strlen(text) > 1)
+  {
+    char *output = NULL;
+    int res = history_expand(text, &output);
+    if(res == 1)
+    {
+        char **ms = (char **)xmalloc(2 * sizeof (char *));
+        ms[1] = NULL;
+        ms[0] = output;
+        *matches = ms;
+        return 1;
+    }
+  }
+  return 0;
+}
+
 /* Complete the word at or before point.
    WHAT_TO_DO says what to do with the completion.
    `?' means list the possible completions.
@@ -2028,7 +2049,43 @@ rl_complete_internal (int what_to_do)
   rl_point = end;
 
   text = rl_copy_text (start, end);
-  matches = gen_completion_matches (text, start, end, our_func, found_quote, quote_char);
+  
+  if(text[0] != '!')
+  {
+    volatile int start_index = start;
+    if(start_index)
+    {
+      if(rl_line_buffer[start_index - 1] == ':')
+      {
+        start_index--;
+        while(start_index)
+        {
+          if(rl_line_buffer[start_index - 1] == '!')
+          {
+            start = start_index - 1;
+            text = rl_copy_text (start, end);
+            break;
+          }
+          else if(!isdigit(rl_line_buffer[start_index - 1]))
+          {
+		if((start_index > 1) && (rl_line_buffer[start_index - 1] == '-') && (rl_line_buffer[start_index - 2] == '!'))
+		{
+			start_index--;
+			continue;
+		}
+            break;
+          }
+          start_index--;
+        }
+      }
+    }
+  }
+  
+  int nmatches = match_history_expansion(text, &matches);
+  if(!nmatches)
+  {
+    matches = gen_completion_matches (text, start, end, our_func, found_quote, quote_char);
+  }
   /* nontrivial_lcd is set if the common prefix adds something to the word
      being completed. */
   nontrivial_lcd = matches && compare_match (text, matches[0]) != 0;
